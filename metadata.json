@@ -1,0 +1,6 @@
+{
+  "name": "Smitch Local Controller",
+  "description": "Android 15 native controller for Smitch RGB CCT Smart Bulb v2.0 with interactive bulb stage and diagnostics",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
