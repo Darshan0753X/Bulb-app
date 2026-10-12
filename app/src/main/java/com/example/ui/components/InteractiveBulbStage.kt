@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,16 +42,12 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ui.theme.BorderDark
-import com.example.ui.theme.MutedGray
-import com.example.ui.theme.SurfaceDark
 import kotlin.math.roundToInt
 
 @Composable
@@ -61,37 +58,45 @@ fun InteractiveBulbStage(
     modifier: Modifier = Modifier,
     onResetPosition: () -> Unit = {}
 ) {
+    val infiniteTransition = rememberInfiniteTransition(label = "particlesAndBreathing")
+
+    // Ambient floating particle offsets
+    val particlePhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(4000, easing = LinearEasing), RepeatMode.Restart),
+        label = "particleFloat"
+    )
+
+    val surfaceBg = MaterialTheme.colorScheme.surface
+    val borderCol = MaterialTheme.colorScheme.outline
+
     BoxWithConstraints(
         modifier = modifier
-            .clip(RoundedCornerShape(28.dp))
+            .clip(RoundedCornerShape(32.dp))
             .background(
                 Brush.radialGradient(
                     colors = listOf(
-                        if (isPoweredOn) bulbColor.copy(alpha = 0.22f * (brightness / 100f)) else Color.Transparent,
-                        SurfaceDark.copy(alpha = 0.95f),
-                        Color(0xFF090C12)
+                        if (isPoweredOn) bulbColor.copy(alpha = 0.28f * (brightness / 100f)) else Color.Transparent,
+                        surfaceBg.copy(alpha = 0.95f),
+                        MaterialTheme.colorScheme.background
                     ),
                     radius = 900f
                 )
             )
-            .border(1.dp, BorderDark.copy(alpha = 0.6f), RoundedCornerShape(28.dp))
+            .border(1.dp, borderCol.copy(alpha = 0.5f), RoundedCornerShape(32.dp))
     ) {
         val stageWidthPx = constraints.maxWidth.toFloat()
         val stageHeightPx = constraints.maxHeight.toFloat()
 
-        val bulbSizeDp = 130.dp
+        val bulbSizeDp = 136.dp
         val density = androidx.compose.ui.platform.LocalDensity.current
         val bulbSizePx = with(density) { bulbSizeDp.toPx() }
 
-        // Initial center coordinates
-        val defaultX = (stageWidthPx - bulbSizePx) / 2f
-        val defaultY = (stageHeightPx - bulbSizePx) / 2f
-
-        var offsetX by remember { mutableFloatStateOf(defaultX) }
-        var offsetY by remember { mutableFloatStateOf(defaultY) }
+        var offsetX by remember { mutableFloatStateOf(0f) }
+        var offsetY by remember { mutableFloatStateOf(0f) }
         var isDragging by remember { mutableStateOf(false) }
 
-        // Recalculate default if constraints change from 0
         LaunchedEffect(stageWidthPx, stageHeightPx) {
             if (stageWidthPx > 0 && stageHeightPx > 0) {
                 if (offsetX == 0f && offsetY == 0f) {
@@ -101,25 +106,44 @@ fun InteractiveBulbStage(
             }
         }
 
-        // Ambient floor reflection
+        // Ambient floor reflection & floating particles
         Canvas(modifier = Modifier.fillMaxSize()) {
             if (isPoweredOn && stageHeightPx > 0) {
+                // Floor glow reflection
                 drawOval(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            bulbColor.copy(alpha = 0.25f * (brightness / 100f)),
+                            bulbColor.copy(alpha = 0.3f * (brightness / 100f)),
                             Color.Transparent
                         ),
                         center = Offset(offsetX + bulbSizePx / 2f, stageHeightPx - 25f),
-                        radius = 200f
+                        radius = 220f
                     ),
-                    topLeft = Offset(offsetX + bulbSizePx / 2f - 180f, stageHeightPx - 50f),
+                    topLeft = Offset(offsetX + bulbSizePx / 2f - 180f, stageHeightPx - 45f),
                     size = Size(360f, 60f)
                 )
+
+                // Floating ambient stardust particles around the bulb
+                val particleCount = 12
+                val bulbCenter = Offset(offsetX + bulbSizePx / 2f, offsetY + bulbSizePx / 2f)
+                for (i in 0 until particleCount) {
+                    val angle = (i.toFloat() / particleCount) * (Math.PI * 2.0)
+                    val dist = 90f + (i * 12f) + (particlePhase * 25f)
+                    val px = bulbCenter.x + (kotlin.math.cos(angle + particlePhase) * dist).toFloat()
+                    val py = bulbCenter.y + (kotlin.math.sin(angle + particlePhase) * dist).toFloat()
+
+                    if (px in 0f..stageWidthPx && py in 0f..stageHeightPx) {
+                        drawCircle(
+                            color = bulbColor.copy(alpha = (0.6f * (1f - (dist / 240f).coerceIn(0f, 1f))).coerceAtLeast(0f)),
+                            radius = (2.5f + (i % 3)),
+                            center = Offset(px, py)
+                        )
+                    }
+                }
             }
         }
 
-        // Draggable Glowing Bulb Component
+        // Draggable Glowing Bulb
         Box(
             modifier = Modifier
                 .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
@@ -148,7 +172,7 @@ fun InteractiveBulbStage(
             )
         }
 
-        // Reset Position & Stage Status Indicator
+        // Reset Position Control
         Box(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
@@ -156,8 +180,8 @@ fun InteractiveBulbStage(
         ) {
             Surface(
                 shape = CircleShape,
-                color = SurfaceDark.copy(alpha = 0.85f),
-                border = androidx.compose.foundation.BorderStroke(1.dp, BorderDark),
+                color = surfaceBg.copy(alpha = 0.85f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, borderCol),
                 modifier = Modifier.size(36.dp)
             ) {
                 IconButton(
@@ -171,22 +195,22 @@ fun InteractiveBulbStage(
                     Icon(
                         imageVector = Icons.Default.RestartAlt,
                         contentDescription = "Reset Bulb Position",
-                        tint = MutedGray,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(18.dp)
                     )
                 }
             }
         }
 
-        // Stage Drag Hint
+        // Drag Status Label
         Box(
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .padding(16.dp)
         ) {
             Text(
-                text = if (isDragging) "DRAGGING BULB" else "INTERACTIVE BULB STAGE",
-                color = MutedGray.copy(alpha = 0.7f),
+                text = if (isDragging) "DRAGGING BULB" else "LIVING BULB STAGE",
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                 fontSize = 10.sp,
                 letterSpacing = 1.2.sp
             )
@@ -221,7 +245,7 @@ fun SmartBulbIllustration(
     }
 
     val glowColor = if (isPoweredOn) {
-        color.copy(alpha = (0.55f * (brightness / 100f) * breathingAlpha).coerceIn(0f, 1f))
+        color.copy(alpha = (0.58f * (brightness / 100f) * breathingAlpha).coerceIn(0f, 1f))
     } else {
         Color.Transparent
     }
@@ -242,15 +266,15 @@ fun SmartBulbIllustration(
                         Color.Transparent
                     ),
                     center = Offset(cx, cy - h * 0.1f),
-                    radius = w * 0.65f
+                    radius = w * 0.68f
                 ),
-                radius = w * 0.65f,
+                radius = w * 0.68f,
                 center = Offset(cx, cy - h * 0.1f)
             )
         }
 
         // Bulb Glass Body Path
-        val domeRadius = w * 0.32f
+        val domeRadius = w * 0.33f
         val domeCenter = Offset(cx, cy - h * 0.08f)
 
         // Glass Outer Shell
@@ -267,7 +291,7 @@ fun SmartBulbIllustration(
         // Glass Rim Highlight / Border
         drawCircle(
             color = if (isPoweredOn) {
-                color.copy(alpha = 0.8f)
+                color.copy(alpha = 0.85f)
             } else {
                 Color(0xFF334155)
             },

@@ -20,7 +20,7 @@ import androidx.compose.material.icons.filled.Thermostat
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ElevatedButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
@@ -32,18 +32,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ui.theme.BorderDark
-import com.example.ui.theme.MutedGray
 import com.example.ui.theme.NeonAmber
 import com.example.ui.theme.NeonCyan
 import com.example.ui.theme.PowerActiveGlow
 import com.example.ui.theme.PowerInactive
-import com.example.ui.theme.SurfaceDark
-import com.example.ui.theme.SurfaceElevatedDark
 
 @Composable
 fun FuturisticPowerButton(
@@ -51,18 +48,22 @@ fun FuturisticPowerButton(
     onToggle: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val haptic = LocalHapticFeedback.current
     val buttonGlow by animateColorAsState(
         targetValue = if (isPoweredOn) PowerActiveGlow else PowerInactive,
         label = "powerColor"
     )
 
     Surface(
-        onClick = onToggle,
+        onClick = {
+            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+            onToggle()
+        },
         shape = CircleShape,
-        color = SurfaceDark,
+        color = MaterialTheme.colorScheme.surface,
         border = androidx.compose.foundation.BorderStroke(
             2.dp,
-            if (isPoweredOn) buttonGlow else BorderDark
+            if (isPoweredOn) buttonGlow else MaterialTheme.colorScheme.outline
         ),
         shadowElevation = if (isPoweredOn) 12.dp else 2.dp,
         modifier = modifier
@@ -85,7 +86,7 @@ fun FuturisticPowerButton(
             Icon(
                 imageVector = Icons.Default.PowerSettingsNew,
                 contentDescription = if (isPoweredOn) "Power Off" else "Power On",
-                tint = if (isPoweredOn) buttonGlow else MutedGray,
+                tint = if (isPoweredOn) buttonGlow else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(36.dp)
             )
         }
@@ -100,12 +101,14 @@ fun BrightnessSliderCard(
     onApplyBrightness: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val haptic = LocalHapticFeedback.current
+
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(SurfaceElevatedDark.copy(alpha = 0.7f))
-            .border(1.dp, BorderDark, RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(22.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(22.dp))
             .padding(16.dp)
     ) {
         Row(
@@ -123,7 +126,7 @@ fun BrightnessSliderCard(
                 text = "BRIGHTNESS",
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
-                color = MutedGray,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 letterSpacing = 1.sp
             )
             Spacer(modifier = Modifier.weight(1f))
@@ -131,15 +134,13 @@ fun BrightnessSliderCard(
                 text = "$brightness%",
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color.White
+                color = MaterialTheme.colorScheme.onSurface
             )
         }
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Slider(
                 value = brightness.toFloat(),
                 onValueChange = { onBrightnessChange(it.toInt()) },
@@ -148,7 +149,7 @@ fun BrightnessSliderCard(
                 colors = SliderDefaults.colors(
                     thumbColor = NeonAmber,
                     activeTrackColor = NeonAmber,
-                    inactiveTrackColor = SurfaceDark
+                    inactiveTrackColor = MaterialTheme.colorScheme.surface
                 ),
                 modifier = Modifier
                     .weight(1f)
@@ -158,13 +159,14 @@ fun BrightnessSliderCard(
             Spacer(modifier = Modifier.size(12.dp))
 
             ElevatedButton(
-                onClick = onApplyBrightness,
+                onClick = {
+                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                    onApplyBrightness()
+                },
                 enabled = isPending,
                 colors = ButtonDefaults.elevatedButtonColors(
                     containerColor = NeonAmber,
-                    contentColor = Color.Black,
-                    disabledContainerColor = SurfaceDark,
-                    disabledContentColor = MutedGray
+                    contentColor = Color.Black
                 ),
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.testTag("apply_brightness_button")
@@ -183,6 +185,7 @@ fun ColorTemperatureCard(
     onApplyTemp: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val haptic = LocalHapticFeedback.current
     val tempLabel = when {
         tempKelvin < 3200 -> "Warm White"
         tempKelvin < 4500 -> "Neutral White"
@@ -193,9 +196,9 @@ fun ColorTemperatureCard(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(SurfaceElevatedDark.copy(alpha = 0.7f))
-            .border(1.dp, BorderDark, RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(22.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(22.dp))
             .padding(16.dp)
     ) {
         Row(
@@ -213,7 +216,7 @@ fun ColorTemperatureCard(
                 text = "WHITE CCT",
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
-                color = MutedGray,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 letterSpacing = 1.sp
             )
             Spacer(modifier = Modifier.weight(1f))
@@ -221,13 +224,12 @@ fun ColorTemperatureCard(
                 text = "$tempKelvin K  ($tempLabel)",
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = Color.White
+                color = MaterialTheme.colorScheme.onSurface
             )
         }
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        // Amber to Cool Blue Gradient Track background
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -236,17 +238,15 @@ fun ColorTemperatureCard(
                 .background(
                     Brush.horizontalGradient(
                         listOf(
-                            Color(0xFFFF9E43), // Warm 2700K
-                            Color(0xFFFFFAEE), // Neutral 4000K
-                            Color(0xFFB5D8FF)  // Cool 6500K
+                            Color(0xFFFF9E43),
+                            Color(0xFFFFFAEE),
+                            Color(0xFFB5D8FF)
                         )
                     )
                 )
         )
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Slider(
                 value = tempKelvin.toFloat(),
                 onValueChange = { onTempChange(it.toInt()) },
@@ -264,13 +264,14 @@ fun ColorTemperatureCard(
             Spacer(modifier = Modifier.size(12.dp))
 
             ElevatedButton(
-                onClick = onApplyTemp,
+                onClick = {
+                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                    onApplyTemp()
+                },
                 enabled = isPending,
                 colors = ButtonDefaults.elevatedButtonColors(
                     containerColor = NeonCyan,
-                    contentColor = Color.Black,
-                    disabledContainerColor = SurfaceDark,
-                    disabledContentColor = MutedGray
+                    contentColor = Color.Black
                 ),
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.testTag("apply_temp_button")

@@ -1,9 +1,15 @@
 package com.example.viewmodel
 
 import android.app.Application
+import android.net.Uri
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.audio.AudioAnalysisFrame
+import com.example.audio.AudioReactiveController
+import com.example.audio.MusicReactiveMode
+import com.example.data.models.DefaultScenes
+import com.example.data.models.LightingScene
 import com.example.diagnostics.DiagnosticLogEntry
 import com.example.diagnostics.DiagnosticLogger
 import com.example.network.DiscoveredDevice
@@ -17,10 +23,8 @@ import com.example.repository.BulbRepository
 import com.example.repository.BulbTargetConfig
 import com.example.repository.ConnectionMode
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 enum class ConnectionStatusIndicator {
@@ -52,6 +56,22 @@ data class BulbUiState(
     val statusMessage: String = "Ready for local control",
     val isBusy: Boolean = false,
 
+    // Palette history
+    val favoriteColors: List<Color> = listOf(
+        Color(0xFF00E5FF), Color(0xFFFFB300), Color(0xFFFF3366),
+        Color(0xFF00E676), Color(0xFFB388FF), Color(0xFFFFF9C4)
+    ),
+    val recentColors: List<Color> = listOf(
+        Color(0xFF00E5FF), Color(0xFFFF7043), Color(0xFF00B0FF)
+    ),
+
+    // Scenes
+    val customScenes: List<LightingScene> = emptyList(),
+    val activeScene: LightingScene? = null,
+
+    // Theme Mode
+    val isDarkTheme: Boolean = true,
+
     // Target configuration
     val config: BulbTargetConfig = BulbTargetConfig()
 )
@@ -60,6 +80,7 @@ class BulbViewModel(application: Application) : AndroidViewModel(application) {
 
     val repository = BulbRepository()
     val discoveryManager = LocalDiscoveryManager(application.applicationContext)
+    val audioController = AudioReactiveController(application.applicationContext)
 
     private val _uiState = MutableStateFlow(BulbUiState())
     val uiState: StateFlow<BulbUiState> = _uiState.asStateFlow()
@@ -71,6 +92,15 @@ class BulbViewModel(application: Application) : AndroidViewModel(application) {
     val isDiscovering: StateFlow<Boolean> = discoveryManager.isDiscovering
     val discoveryError: StateFlow<String?> = discoveryManager.discoveryError
 
+    val audioAnalysisFrame: StateFlow<AudioAnalysisFrame> = audioController.analysisFrame
+    val isAudioPlaying: StateFlow<Boolean> = audioController.isPlaying
+    val currentTrack: StateFlow<com.example.audio.AudioTrackItem?> = audioController.currentTrack
+    val folderPlaylists: StateFlow<List<com.example.audio.FolderPlaylist>> = audioController.folderPlaylists
+    val currentTrackIndex: StateFlow<Int> = audioController.currentTrackIndex
+    val musicReactiveMode: StateFlow<MusicReactiveMode> = audioController.selectedMode
+
+    private var lastAudioCommandTime = 0L
+
     init {
         viewModelScope.launch {
             repository.config.collect { cfg ->
@@ -80,6 +110,25 @@ class BulbViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.lastStatus.collect { st ->
                 st?.let { applyConfirmedStatus(it) }
+            }
+        }
+        viewModelScope.launch {
+            audioController.analysisFrame.collect { frame ->
+                if (audioController.isPlaying.value) {
+                    val hsv = floatArrayOf(frame.suggestedHue, 1f, 1f)
+                    val color = Color(android.graphics.Color.HSVToColor(hsv))
+                    _uiState.value = _uiState.value.copy(
+                        previewColor = color,
+                        previewBrightness = frame.suggestedBrightness
+                    )
+
+                    // Throttle hardware sync to ~4Hz to prevent socket congestion
+                    val now = System.currentTimeMillis()
+                    if (now - lastAudioCommandTime > 250) {
+                        lastAudioCommandTime = now
+                        applyBrightnessInternal(frame.suggestedBrightness)
+                    }
+                }
             }
         }
     }
@@ -117,12 +166,18 @@ class BulbViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    // --- Visual Preview updates (Immediate, no network traffic) ---
+    // --- Visual Preview updates ---
 
     fun onPreviewColorChanged(color: Color) {
+        val recents = _uiState.value.recentColors.toMutableList()
+        if (!recents.contains(color)) {
+            recents.add(0, color)
+            if (recents.size > 8) recents.removeAt(recents.lastIndex)
+        }
         _uiState.value = _uiState.value.copy(
             previewColor = color,
-            isColorPending = true
+            isColorPending = true,
+            recentColors = recents
         )
     }
 
@@ -138,6 +193,20 @@ class BulbViewModel(application: Application) : AndroidViewModel(application) {
             previewTempKelvin = kelvin,
             isTempPending = true
         )
+    }
+
+    fun toggleFavoriteColor(color: Color) {
+        val favorites = _uiState.value.favoriteColors.toMutableList()
+        if (favorites.contains(color)) {
+            favorites.remove(color)
+        } else {
+            favorites.add(0, color)
+        }
+        _uiState.value = _uiState.value.copy(favoriteColors = favorites)
+    }
+
+    fun toggleTheme() {
+        _uiState.value = _uiState.value.copy(isDarkTheme = !_uiState.value.isDarkTheme)
     }
 
     // --- Explicit Hardware Actions ---
@@ -179,7 +248,10 @@ class BulbViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun applyBrightness() {
-        val brightness = _uiState.value.previewBrightness
+        applyBrightnessInternal(_uiState.value.previewBrightness)
+    }
+
+    private fun applyBrightnessInternal(brightness: Int) {
         _uiState.value = _uiState.value.copy(
             isBusy = true,
             connectionStatus = ConnectionStatusIndicator.SENDING,
@@ -231,6 +303,53 @@ class BulbViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
         }
+    }
+
+    fun applyScene(scene: LightingScene) {
+        _uiState.value = _uiState.value.copy(
+            activeScene = scene,
+            previewColor = scene.color,
+            previewBrightness = scene.brightness,
+            previewTempKelvin = scene.tempKelvin,
+            isColorPending = false,
+            isBrightnessPending = false,
+            isTempPending = false,
+            isBusy = true,
+            connectionStatus = ConnectionStatusIndicator.SENDING,
+            statusMessage = "Applying scene: ${scene.name}..."
+        )
+
+        viewModelScope.launch {
+            if (scene.hardwareEffect != null) {
+                repository.setEffect(scene.hardwareEffect, true)
+            } else {
+                val r = (scene.color.red * 255).toInt().coerceIn(0, 255)
+                val g = (scene.color.green * 255).toInt().coerceIn(0, 255)
+                val b = (scene.color.blue * 255).toInt().coerceIn(0, 255)
+                repository.setRgb(r, g, b)
+                repository.setBrightness(scene.brightness)
+            }
+            _uiState.value = _uiState.value.copy(
+                isBusy = false,
+                connectionStatus = ConnectionStatusIndicator.WRITE_SUCCESS,
+                statusMessage = "Scene '${scene.name}' applied"
+            )
+        }
+    }
+
+    fun saveCustomScene(name: String, description: String) {
+        val newScene = LightingScene(
+            id = "custom_${System.currentTimeMillis()}",
+            name = name.ifBlank { "Custom Scene" },
+            description = description.ifBlank { "User saved scene" },
+            color = _uiState.value.previewColor,
+            brightness = _uiState.value.previewBrightness,
+            tempKelvin = _uiState.value.previewTempKelvin,
+            isCustom = true
+        )
+        val current = _uiState.value.customScenes.toMutableList()
+        current.add(0, newScene)
+        _uiState.value = _uiState.value.copy(customScenes = current)
     }
 
     fun requestStatus() {
@@ -329,5 +448,38 @@ class BulbViewModel(application: Application) : AndroidViewModel(application) {
 
     fun stopDiscovery() {
         discoveryManager.stopDiscovery()
+    }
+
+    fun addAudioFiles(uris: List<Uri>, customFolderName: String? = null) {
+        audioController.addAudioUris(uris, customFolderName)
+    }
+
+    fun playFolder(folderName: String, startIndex: Int = 0) {
+        audioController.playFolder(folderName, startIndex)
+    }
+
+    fun playTrack(track: com.example.audio.AudioTrackItem) {
+        audioController.playTrack(track)
+    }
+
+    fun playNext() {
+        audioController.playNextTrack()
+    }
+
+    fun playPrevious() {
+        audioController.playPreviousTrack()
+    }
+
+    fun toggleAudioPlayback() {
+        audioController.togglePlayPause()
+    }
+
+    fun setMusicMode(mode: MusicReactiveMode) {
+        audioController.setMode(mode)
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        audioController.stop()
     }
 }

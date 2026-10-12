@@ -3,8 +3,10 @@ package com.example.ui.components
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -15,18 +17,23 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ElevatedButton
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -41,11 +48,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ui.theme.BorderDark
-import com.example.ui.theme.MutedGray
 import com.example.ui.theme.NeonCyan
-import com.example.ui.theme.SurfaceDark
-import com.example.ui.theme.SurfaceElevatedDark
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -53,116 +56,221 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 @Composable
-fun ColorWheelPicker(
-    selectedColor: Color,
-    onColorSelected: (Color) -> Unit,
+fun InteractiveColorWheel(
+    currentColor: Color,
+    onColorChanged: (Color) -> Unit,
     modifier: Modifier = Modifier
 ) {
     BoxWithConstraints(
         modifier = modifier
-            .size(240.dp)
+            .size(260.dp)
             .clip(CircleShape)
-            .background(SurfaceDark)
-            .border(1.dp, BorderDark, CircleShape)
+            .background(
+                Brush.radialGradient(
+                    colors = listOf(
+                        currentColor.copy(alpha = 0.18f),
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+                        MaterialTheme.colorScheme.surface
+                    )
+                )
+            )
+            .border(2.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f), CircleShape)
             .testTag("color_wheel_picker")
     ) {
         val sizePx = constraints.maxWidth.toFloat()
         val radius = sizePx / 2f
         val center = Offset(radius, radius)
+        val outerRadius = radius * 0.94f
+        val innerRadius = radius * 0.52f
 
-        // Helper to compute color from polar angle/distance
-        fun colorFromOffset(offset: Offset): Color {
+        var thumbPos by remember { mutableStateOf(Offset(radius, radius * 0.35f)) }
+
+        fun updateFromOffset(offset: Offset) {
             val dx = offset.x - center.x
             val dy = offset.y - center.y
-            val dist = sqrt(dx * dx + dy * dy).coerceAtMost(radius)
+            val dist = sqrt(dx * dx + dy * dy).coerceIn(innerRadius, outerRadius)
             val angleRad = atan2(dy, dx)
             var angleDeg = Math.toDegrees(angleRad.toDouble()).toFloat()
             if (angleDeg < 0) angleDeg += 360f
 
-            val saturation = (dist / radius).coerceIn(0f, 1f)
+            thumbPos = Offset(
+                center.x + (cos(angleRad) * dist).toFloat(),
+                center.y + (sin(angleRad) * dist).toFloat()
+            )
+
+            // Dynamic saturation mapped from inner to outer ring
+            val saturation = ((dist - innerRadius) / (outerRadius - innerRadius)).coerceIn(0.35f, 1f)
             val hsv = floatArrayOf(angleDeg, saturation, 1.0f)
             val argb = android.graphics.Color.HSVToColor(hsv)
-            return Color(argb)
+            onColorChanged(Color(argb))
         }
+
+        val surfaceColor = MaterialTheme.colorScheme.surface
+        val outlineColor = MaterialTheme.colorScheme.outline
 
         Canvas(
             modifier = Modifier
-                .size(240.dp)
+                .size(260.dp)
                 .pointerInput(Unit) {
-                    detectTapGestures { offset ->
-                        onColorSelected(colorFromOffset(offset))
-                    }
+                    detectTapGestures { offset -> updateFromOffset(offset) }
                 }
                 .pointerInput(Unit) {
                     detectDragGestures { change, _ ->
                         change.consume()
-                        onColorSelected(colorFromOffset(change.position))
+                        updateFromOffset(change.position)
                     }
                 }
         ) {
             val sweepColors = listOf(
-                Color.Red, Color.Yellow, Color.Green,
-                Color.Cyan, Color.Blue, Color.Magenta, Color.Red
+                Color(0xFFFF1744), // Crimson Red
+                Color(0xFFFF9100), // Amber Gold
+                Color(0xFFFFEA00), // Sunshine Yellow
+                Color(0xFF00E676), // Spring Green
+                Color(0xFF00E5FF), // Electric Cyan
+                Color(0xFF2979FF), // Deep Azure
+                Color(0xFFD500F9), // Neon Magenta
+                Color(0xFFFF1744)  // Loop
             )
-            // Sweep Hue Gradient
+
+            // 1. Chromatic Donut Ring
             drawCircle(
                 brush = Brush.sweepGradient(sweepColors, center),
-                radius = radius,
-                center = center
+                radius = (outerRadius + innerRadius) / 2f,
+                center = center,
+                style = Stroke(width = outerRadius - innerRadius)
             )
-            // Radial Saturation Fade (Center white)
+
+            // 2. Subtle Soft Radial Light Bleed
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(Color.White, Color.Transparent),
+                    colors = listOf(Color.White.copy(alpha = 0.35f), Color.Transparent),
                     center = center,
-                    radius = radius
+                    radius = outerRadius
                 ),
-                radius = radius,
+                radius = outerRadius,
                 center = center
             )
-            // Outer bezel ring
+
+            // 3. Inner Frosted Glass Core with Current Color Ambient Bloom
             drawCircle(
-                color = BorderDark,
-                radius = radius - 1f,
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        currentColor.copy(alpha = 0.35f),
+                        surfaceColor.copy(alpha = 0.95f),
+                        surfaceColor
+                    ),
+                    center = center,
+                    radius = innerRadius
+                ),
+                radius = innerRadius,
+                center = center
+            )
+
+            // Inner Ring Border Bezel
+            drawCircle(
+                color = outlineColor.copy(alpha = 0.8f),
+                radius = innerRadius,
                 center = center,
                 style = Stroke(width = 2.dp.toPx())
+            )
+
+            // Outer Ring Border Bezel
+            drawCircle(
+                color = outlineColor.copy(alpha = 0.8f),
+                radius = outerRadius,
+                center = center,
+                style = Stroke(width = 2.dp.toPx())
+            )
+
+            // 4. Center Glowing Disc Indicator
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(Color.White, currentColor),
+                    center = center,
+                    radius = innerRadius * 0.45f
+                ),
+                radius = innerRadius * 0.45f,
+                center = center
+            )
+            drawCircle(
+                color = Color.White.copy(alpha = 0.8f),
+                radius = innerRadius * 0.45f,
+                center = center,
+                style = Stroke(width = 2.dp.toPx())
+            )
+
+            // 5. Aesthetic Glass Halo Thumb Indicator
+            // Soft Shadow
+            drawCircle(
+                color = Color.Black.copy(alpha = 0.3f),
+                radius = 18.dp.toPx(),
+                center = thumbPos + Offset(0f, 3f)
+            )
+            // Outer Glowing Ring
+            drawCircle(
+                color = currentColor.copy(alpha = 0.5f),
+                radius = 17.dp.toPx(),
+                center = thumbPos
+            )
+            // Crisp White Ring
+            drawCircle(
+                color = Color.White,
+                radius = 13.dp.toPx(),
+                center = thumbPos,
+                style = Stroke(width = 2.5.dp.toPx())
+            )
+            // Vibrant Center Dot
+            drawCircle(
+                color = currentColor,
+                radius = 10.dp.toPx(),
+                center = thumbPos
             )
         }
     }
 }
 
 @Composable
-fun ColorControlSection(
+fun FullColorStudioSection(
     currentColor: Color,
     isPending: Boolean,
+    favoriteColors: List<Color>,
+    recentColors: List<Color>,
     onColorChanged: (Color) -> Unit,
+    onToggleFavorite: (Color) -> Unit,
     onApplyColor: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val r = (currentColor.red * 255).roundToInt()
+    val g = (currentColor.green * 255).roundToInt()
+    val b = (currentColor.blue * 255).roundToInt()
+    val hexCode = String.format("#%02X%02X%02X", r, g, b)
+    val isFavorite = favoriteColors.contains(currentColor)
+
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(SurfaceElevatedDark.copy(alpha = 0.7f))
-            .border(1.dp, BorderDark, RoundedCornerShape(20.dp))
-            .padding(16.dp),
+            .clip(RoundedCornerShape(24.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(24.dp))
+            .padding(18.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // Header
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "RGB COLOR",
+                text = "CHROMATIC COLOR WHEEL",
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
-                color = MutedGray,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 letterSpacing = 1.sp
             )
             Spacer(modifier = Modifier.weight(1f))
             if (isPending) {
                 Surface(
-                    shape = RoundedCornerShape(6.dp),
+                    shape = RoundedCornerShape(8.dp),
                     color = Color(0xFFFF9800).copy(alpha = 0.2f),
                     border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFF9800))
                 ) {
@@ -171,66 +279,137 @@ fun ColorControlSection(
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFFFFB74D),
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                     )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
-
-        ColorWheelPicker(
-            selectedColor = currentColor,
-            onColorSelected = onColorChanged
-        )
-
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Selected Color Preview & RGB readout
-        val r = (currentColor.red * 255).roundToInt()
-        val g = (currentColor.green * 255).roundToInt()
-        val b = (currentColor.blue * 255).roundToInt()
+        // Center Wheel
+        InteractiveColorWheel(
+            currentColor = currentColor,
+            onColorChanged = onColorChanged
+        )
 
+        Spacer(modifier = Modifier.height(18.dp))
+
+        // Live Telemetry Bar & Apply Action
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(42.dp)
                     .clip(CircleShape)
                     .background(currentColor)
                     .border(2.dp, Color.White.copy(alpha = 0.8f), CircleShape)
             )
+
             Spacer(modifier = Modifier.width(12.dp))
+
             Column {
                 Text(
-                    text = "R: $r   G: $g   B: $b",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color.White
+                    text = hexCode,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = String.format("#%02X%02X%02X", r, g, b),
-                    fontSize = 11.sp,
-                    color = MutedGray
+                    text = "R: $r  G: $g  B: $b",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+
+            IconButton(
+                onClick = { onToggleFavorite(currentColor) },
+                modifier = Modifier.padding(start = 4.dp)
+            ) {
+                Icon(
+                    imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    contentDescription = "Toggle Favorite",
+                    tint = if (isFavorite) Color(0xFFFF4081) else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
             Spacer(modifier = Modifier.weight(1f))
+
             ElevatedButton(
                 onClick = onApplyColor,
                 enabled = isPending,
                 colors = ButtonDefaults.elevatedButtonColors(
                     containerColor = NeonCyan,
-                    contentColor = Color.Black,
-                    disabledContainerColor = SurfaceDark,
-                    disabledContentColor = MutedGray
+                    contentColor = Color.Black
                 ),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(14.dp),
                 modifier = Modifier.testTag("apply_color_button")
             ) {
                 Text("Apply", fontWeight = FontWeight.Bold, fontSize = 13.sp)
             }
         }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Favorite Swatches
+        if (favoriteColors.isNotEmpty()) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "FAVORITES",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    letterSpacing = 1.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(favoriteColors) { color ->
+                        ColorSwatch(color = color, isSelected = color == currentColor, onClick = { onColorChanged(color) })
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
+        // Recent Swatches
+        if (recentColors.isNotEmpty()) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "RECENTS",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    letterSpacing = 1.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(recentColors) { color ->
+                        ColorSwatch(color = color, isSelected = color == currentColor, onClick = { onColorChanged(color) })
+                    }
+                }
+            }
+        }
     }
+}
+
+@Composable
+private fun ColorSwatch(
+    color: Color,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(34.dp)
+            .clip(CircleShape)
+            .background(color)
+            .border(
+                width = if (isSelected) 3.dp else 1.dp,
+                color = if (isSelected) Color.White else Color.Black.copy(alpha = 0.2f),
+                shape = CircleShape
+            )
+            .clickable { onClick() }
+    )
 }

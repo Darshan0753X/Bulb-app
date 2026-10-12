@@ -12,19 +12,25 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.ColorLens
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Wifi
-import androidx.compose.material.icons.outlined.Lightbulb
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.ColorLens
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,15 +41,13 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ui.screens.DevicesDiscoveryScreen
-import com.example.ui.screens.MainBulbScreen
+import com.example.ui.components.FullColorStudioSection
+import com.example.ui.screens.HomeDashboardScreen
+import com.example.ui.screens.MusicScreen
+import com.example.ui.screens.ScenesScreen
 import com.example.ui.screens.SettingsDiagnosticsScreen
-import com.example.ui.theme.BorderDark
-import com.example.ui.theme.MidnightDark
-import com.example.ui.theme.MutedGray
 import com.example.ui.theme.NeonCyan
 import com.example.ui.theme.SmitchTheme
-import com.example.ui.theme.SurfaceDark
 import com.example.viewmodel.BulbViewModel
 
 enum class NavigationTab(
@@ -51,9 +55,11 @@ enum class NavigationTab(
     val selectedIcon: ImageVector,
     val unselectedIcon: ImageVector
 ) {
-    LIGHT("Light", Icons.Filled.Lightbulb, Icons.Outlined.Lightbulb),
-    DEVICES("Devices", Icons.Filled.Wifi, Icons.Outlined.Wifi),
-    DIAGNOSTICS("Diagnostics", Icons.Filled.Settings, Icons.Outlined.Settings)
+    HOME("Home", Icons.Filled.Home, Icons.Outlined.Home),
+    COLOURS("Colours", Icons.Filled.ColorLens, Icons.Outlined.ColorLens),
+    SCENES("Scenes", Icons.Filled.AutoAwesome, Icons.Outlined.AutoAwesome),
+    MUSIC("Music", Icons.Filled.MusicNote, Icons.Outlined.MusicNote),
+    SETTINGS("Settings", Icons.Filled.Settings, Icons.Outlined.Settings)
 }
 
 class MainActivity : ComponentActivity() {
@@ -65,15 +71,17 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
-            SmitchTheme {
-                var currentTab by remember { mutableStateOf(NavigationTab.LIGHT) }
+            val uiState by viewModel.uiState.collectAsState()
+
+            SmitchTheme(isDarkTheme = uiState.isDarkTheme) {
+                var currentTab by remember { mutableStateOf(NavigationTab.HOME) }
 
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     bottomBar = {
                         NavigationBar(
-                            containerColor = SurfaceDark,
-                            contentColor = Color.White,
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            contentColor = MaterialTheme.colorScheme.onSurface,
                             tonalElevation = 8.dp,
                             modifier = Modifier
                                 .navigationBarsPadding()
@@ -94,15 +102,15 @@ class MainActivity : ComponentActivity() {
                                     label = {
                                         Text(
                                             text = tab.title,
-                                            fontSize = 11.sp
+                                            fontSize = 10.sp
                                         )
                                     },
                                     colors = NavigationBarItemDefaults.colors(
                                         selectedIconColor = Color.Black,
                                         selectedTextColor = NeonCyan,
                                         indicatorColor = NeonCyan,
-                                        unselectedIconColor = MutedGray,
-                                        unselectedTextColor = MutedGray
+                                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                                     ),
                                     modifier = Modifier.testTag("nav_tab_${tab.name.lowercase()}")
                                 )
@@ -110,16 +118,55 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 ) { innerPadding ->
+                    val activeBulbColor = uiState.previewColor
+                    val isLit = uiState.previewPower
+                    val currentBrightness = uiState.previewBrightness
+
+                    val animatedAmbientColor by androidx.compose.animation.animateColorAsState(
+                        targetValue = if (isLit) {
+                            activeBulbColor.copy(alpha = (0.22f * (currentBrightness / 100f)).coerceIn(0.08f, 0.35f))
+                        } else {
+                            Color.Transparent
+                        },
+                        animationSpec = androidx.compose.animation.core.tween(durationMillis = 600),
+                        label = "appBackgroundTint"
+                    )
+
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(MidnightDark)
+                            .background(
+                                androidx.compose.ui.graphics.Brush.verticalGradient(
+                                    listOf(
+                                        animatedAmbientColor,
+                                        MaterialTheme.colorScheme.background
+                                    )
+                                )
+                            )
                             .padding(innerPadding)
                     ) {
                         when (currentTab) {
-                            NavigationTab.LIGHT -> MainBulbScreen(viewModel = viewModel)
-                            NavigationTab.DEVICES -> DevicesDiscoveryScreen(viewModel = viewModel)
-                            NavigationTab.DIAGNOSTICS -> SettingsDiagnosticsScreen(viewModel = viewModel)
+                            NavigationTab.HOME -> HomeDashboardScreen(viewModel = viewModel)
+                            NavigationTab.COLOURS -> {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(18.dp)
+                                ) {
+                                    FullColorStudioSection(
+                                        currentColor = uiState.previewColor,
+                                        isPending = uiState.isColorPending,
+                                        favoriteColors = uiState.favoriteColors,
+                                        recentColors = uiState.recentColors,
+                                        onColorChanged = { viewModel.onPreviewColorChanged(it) },
+                                        onToggleFavorite = { viewModel.toggleFavoriteColor(it) },
+                                        onApplyColor = { viewModel.applyColor() }
+                                    )
+                                }
+                            }
+                            NavigationTab.SCENES -> ScenesScreen(viewModel = viewModel)
+                            NavigationTab.MUSIC -> MusicScreen(viewModel = viewModel)
+                            NavigationTab.SETTINGS -> SettingsDiagnosticsScreen(viewModel = viewModel)
                         }
                     }
                 }

@@ -1,7 +1,6 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,7 +15,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenuItem
@@ -26,8 +27,8 @@ import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -50,15 +51,10 @@ import com.example.diagnostics.DiagnosticLogEntry
 import com.example.diagnostics.DiagnosticLogger
 import com.example.protocol.BulbModel
 import com.example.protocol.FramingStrategy
-import com.example.ui.theme.BorderDark
-import com.example.ui.theme.MidnightDark
-import com.example.ui.theme.MutedGray
 import com.example.ui.theme.NeonAmber
 import com.example.ui.theme.NeonCyan
 import com.example.ui.theme.NeonGreen
 import com.example.ui.theme.NeonRed
-import com.example.ui.theme.SurfaceDark
-import com.example.ui.theme.SurfaceElevatedDark
 import com.example.viewmodel.BulbViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -79,31 +75,197 @@ fun SettingsDiagnosticsScreen(
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .background(MidnightDark)
+            .background(MaterialTheme.colorScheme.background)
             .padding(18.dp)
     ) {
         item {
-            Text(
-                text = "SETTINGS & DIAGNOSTICS",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Black,
-                color = Color.White,
-                letterSpacing = 1.5.sp
-            )
-            Text(
-                text = "Transport framing, protocol options, and safe socket trace",
-                fontSize = 12.sp,
-                color = MutedGray
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "SETTINGS & DIAGNOSTICS",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        letterSpacing = 1.sp
+                    )
+                    Text(
+                        text = "Hardware framing, theme mode, & socket trace",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                // Theme Toggle
+                IconButton(onClick = { viewModel.toggleTheme() }) {
+                    Icon(
+                        imageVector = if (uiState.isDarkTheme) Icons.Default.LightMode else Icons.Default.DarkMode,
+                        contentDescription = "Toggle Theme",
+                        tint = NeonCyan
+                    )
+                }
+            }
             Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        // Appearance Card
+        item {
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (uiState.isDarkTheme) "Luxury Sci-Fi Dark Theme" else "Clean Minimal Light Theme",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Switch between midnight black and clean porcelain",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = uiState.isDarkTheme,
+                        onCheckedChange = { viewModel.toggleTheme() },
+                        colors = SwitchDefaults.colors(checkedThumbColor = NeonCyan)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(14.dp))
+        }
+
+        // Floating Bulb System Overlay Section
+        item {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val overlayState by com.example.overlay.OverlayStateManager.state.collectAsState()
+
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Floating Bulb System Overlay",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Transparent draggable bulb visible over other apps & home screen",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = overlayState.isEnabled,
+                            onCheckedChange = { enable ->
+                                if (enable) {
+                                    if (android.provider.Settings.canDrawOverlays(context)) {
+                                        com.example.overlay.FloatingBulbOverlayService.start(context)
+                                    } else {
+                                        val intent = android.content.Intent(
+                                            android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                            android.net.Uri.parse("package:${context.packageName}")
+                                        )
+                                        context.startActivity(intent)
+                                    }
+                                } else {
+                                    com.example.overlay.FloatingBulbOverlayService.stop(context)
+                                }
+                            },
+                            colors = SwitchDefaults.colors(checkedThumbColor = NeonCyan)
+                        )
+                    }
+
+                    if (overlayState.isEnabled) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "🟢 Overlay active • Drag anywhere or tap to expand quick controls",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = NeonGreen
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(14.dp))
+        }
+
+        // Voice Cloud Bridge Section (Alexa & Google Home)
+        item {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val bridgeStatus by com.example.bridge.VoiceBridgeManager.status.collectAsState()
+            val isBridgeRunning = bridgeStatus == com.example.bridge.VoiceBridgeStatus.ONLINE
+
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Alexa & Google Home Voice Bridge",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Run local background gateway on phone connected to DIGISOL Wi-Fi",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = isBridgeRunning,
+                            onCheckedChange = { run ->
+                                if (run) {
+                                    com.example.bridge.BulbVoiceBridgeService.start(context)
+                                } else {
+                                    com.example.bridge.BulbVoiceBridgeService.stop(context)
+                                }
+                            },
+                            colors = SwitchDefaults.colors(checkedThumbColor = NeonCyan)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = bridgeStatus.display,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (isBridgeRunning) NeonGreen else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(14.dp))
         }
 
         // Transport Configuration Section
         item {
             Surface(
                 shape = RoundedCornerShape(20.dp),
-                color = SurfaceElevatedDark.copy(alpha = 0.8f),
-                border = androidx.compose.foundation.BorderStroke(1.dp, BorderDark),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -111,14 +273,14 @@ fun SettingsDiagnosticsScreen(
                         text = "FRAMING & PROTOCOL CONFIGURATION",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = MutedGray,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         letterSpacing = 1.sp
                     )
 
                     Spacer(modifier = Modifier.height(14.dp))
 
                     // Framing Strategy Dropdown
-                    Text("TCP Terminator Framing", fontSize = 12.sp, color = Color.White)
+                    Text("TCP Terminator Framing", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
                     Spacer(modifier = Modifier.height(4.dp))
                     ExposedDropdownMenuBox(
                         expanded = framingExpanded,
@@ -129,12 +291,6 @@ fun SettingsDiagnosticsScreen(
                             onValueChange = {},
                             readOnly = true,
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = framingExpanded) },
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = NeonCyan,
-                                unfocusedBorderColor = BorderDark,
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White
-                            ),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .menuAnchor()
@@ -158,7 +314,7 @@ fun SettingsDiagnosticsScreen(
                     Spacer(modifier = Modifier.height(14.dp))
 
                     // Bulb Model Dropdown
-                    Text("Bulb Model Specification", fontSize = 12.sp, color = Color.White)
+                    Text("Bulb Model Specification", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
                     Spacer(modifier = Modifier.height(4.dp))
                     ExposedDropdownMenuBox(
                         expanded = modelExpanded,
@@ -169,12 +325,6 @@ fun SettingsDiagnosticsScreen(
                             onValueChange = {},
                             readOnly = true,
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelExpanded) },
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = NeonCyan,
-                                unfocusedBorderColor = BorderDark,
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White
-                            ),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .menuAnchor()
@@ -203,13 +353,13 @@ fun SettingsDiagnosticsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Enable Experimental LAN Control", fontSize = 13.sp, color = Color.White, fontWeight = FontWeight.SemiBold)
-                            Text("Allows sending raw TCP lighting commands across router subnet", fontSize = 11.sp, color = MutedGray)
+                            Text("Enable Experimental LAN Control", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+                            Text("Allows sending raw TCP commands across router subnet", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Switch(
                             checked = uiState.config.lanControlEnabled,
                             onCheckedChange = { viewModel.setLanControlEnabled(it) },
-                            colors = SwitchDefaults.colors(checkedThumbColor = NeonCyan, checkedTrackColor = SurfaceDark)
+                            colors = SwitchDefaults.colors(checkedThumbColor = NeonCyan)
                         )
                     }
                 }
@@ -221,8 +371,8 @@ fun SettingsDiagnosticsScreen(
         item {
             Surface(
                 shape = RoundedCornerShape(20.dp),
-                color = SurfaceElevatedDark.copy(alpha = 0.8f),
-                border = androidx.compose.foundation.BorderStroke(1.dp, BorderDark),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -230,7 +380,7 @@ fun SettingsDiagnosticsScreen(
                         text = "MANUAL COMMAND TESTER",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = MutedGray,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         letterSpacing = 1.sp
                     )
 
@@ -240,12 +390,6 @@ fun SettingsDiagnosticsScreen(
                         value = testCommand,
                         onValueChange = { testCommand = it },
                         label = { Text("Command Body (e.g. 0001xx03, 0001xx09xxx1)") },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = NeonCyan,
-                            unfocusedBorderColor = BorderDark,
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White
-                        ),
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("diagnostic_command_input")
@@ -257,12 +401,12 @@ fun SettingsDiagnosticsScreen(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Read Socket Response", fontSize = 12.sp, color = Color.White)
+                        Text("Read Socket Response", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
                         Spacer(modifier = Modifier.weight(1f))
                         Switch(
                             checked = readResponseToggle,
                             onCheckedChange = { readResponseToggle = it },
-                            colors = SwitchDefaults.colors(checkedThumbColor = NeonCyan, checkedTrackColor = SurfaceDark)
+                            colors = SwitchDefaults.colors(checkedThumbColor = NeonCyan)
                         )
                     }
 
@@ -304,7 +448,7 @@ fun SettingsDiagnosticsScreen(
                     text = "TRANSMISSION LOGS (${logs.size})",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
-                    color = MutedGray,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     letterSpacing = 1.sp
                 )
                 Spacer(modifier = Modifier.weight(1f))
@@ -312,7 +456,7 @@ fun SettingsDiagnosticsScreen(
                     Icon(
                         imageVector = Icons.Default.DeleteSweep,
                         contentDescription = "Clear Logs",
-                        tint = MutedGray
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -323,12 +467,12 @@ fun SettingsDiagnosticsScreen(
             item {
                 Surface(
                     shape = RoundedCornerShape(14.dp),
-                    color = SurfaceDark,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, BorderDark),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Box(modifier = Modifier.padding(16.dp), contentAlignment = Alignment.Center) {
-                        Text("No transmission entries recorded yet", fontSize = 12.sp, color = MutedGray)
+                        Text("No transmission entries recorded yet", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -345,10 +489,10 @@ fun SettingsDiagnosticsScreen(
 fun DiagnosticLogCard(log: DiagnosticLogEntry) {
     Surface(
         shape = RoundedCornerShape(14.dp),
-        color = SurfaceDark,
+        color = MaterialTheme.colorScheme.surfaceVariant,
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            if (log.writeSuccess) BorderDark else NeonRed.copy(alpha = 0.5f)
+            if (log.writeSuccess) MaterialTheme.colorScheme.outline else NeonRed.copy(alpha = 0.5f)
         ),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -358,7 +502,7 @@ fun DiagnosticLogCard(log: DiagnosticLogEntry) {
                     text = log.timestamp,
                     fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace,
-                    color = MutedGray
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
@@ -382,7 +526,7 @@ fun DiagnosticLogCard(log: DiagnosticLogEntry) {
                 text = "CMD: ${log.commandBody} [${log.framing}]",
                 fontSize = 12.sp,
                 fontFamily = FontFamily.Monospace,
-                color = Color.White
+                color = MaterialTheme.colorScheme.onSurface
             )
 
             if (log.rawResponse != null) {
